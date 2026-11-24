@@ -1,0 +1,29 @@
+name: Publish reVC Release
+
+on:
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Download artifact and publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p dl
+          gh run download 45511201449 -R "${{ github.repository }}" -n regta-revc-3ds -D dl
+          ls -laR dl
+          (cd dl && zip -r ../regta-revc-3ds.zip .)
+          CIA=$(find dl -name '*.cia' | head -n 1)
+          DSX=$(find dl -name '*.3dsx' | head -n 1)
+          gh release create revc-v1 \
+            -R "${{ github.repository }}" \
+            --target main \
+            --title "reVC (Vice City 3DS)" \
+            --notes "Built from Epic0522/REGTA-3DSPort-Complete (run 45511201449)" \
+            regta-revc-3ds.zip "$CIA" "$DSX"
