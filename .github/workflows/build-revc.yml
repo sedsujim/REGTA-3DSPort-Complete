@@ -1,0 +1,54 @@
+name: Build reVC (Vice City 3DS)
+
+on:
+  workflow_dispatch:
+
+env:
+  DEVKITPRO: ${{ github.workspace }}/../devkitpro
+  DEVKITARM: ${{ github.workspace }}/../devkitpro/devkitARM
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install devkitARM r55
+        run: |
+          mkdir -p "$DEVKITPRO"
+          docker run --rm devkitpro/devkitarm:20200730 \
+            tar -C /opt/devkitpro --exclude=./pacman -c . | tar -C "$DEVKITPRO" -x
+          echo "$DEVKITARM/bin" >> "$GITHUB_PATH"
+          echo "$DEVKITPRO/tools/bin" >> "$GITHUB_PATH"
+
+      - name: Build reVC
+        run: ./scripts/build.sh revc
+
+      - name: Package CIA & 3DSX
+        run: |
+          tools="$RUNNER_TEMP/tools"
+          mkdir -p "$tools" "$GITHUB_WORKSPACE/out"
+          cd "$tools"
+          curl -fsSLo makerom.zip https://github.com/3DSGuy/Project_CTR/releases/download/makerom-v0.19.0/makerom-v0.19.0-ubuntu_x86_64.zip
+          curl -fsSLo bannertool.zip https://github.com/diasurgical/bannertool/releases/download/1.2.0/bannertool.zip
+          sha256sum -c <<'EOF'
+          287b809dec064e0ad597e3d272c49ecb7eed41693d5ee6fef9d8a8aa24c2497e  makerom.zip
+          69768596f836acb3e3aeaa66e47c6ba560dde813c6dfcd33c8afc25fe29b7524  bannertool.zip
+          EOF
+          unzip -oj makerom.zip makerom
+          unzip -oj bannertool.zip linux-x86_64/bannertool
+          chmod +x makerom bannertool
+          cd "$GITHUB_WORKSPACE"
+          "$tools/bannertool" makebanner -ci packaging/prebuilt/revc.cgfx -ca packaging/prebuilt/revc.bcwav -o out/revc.bnr
+          "$tools/bannertool" makesmdh -s 'GTAVC For Nintendo 3DS' -l 'Grand Theft Auto: Vice City' -p 'Epic' -i packaging/prebuilt/revc-icon.png -f visible,extendedbanner -r regionfree -o out/gtavc.smdh
+          3dsxtool miami/build/miami.elf out/revc.3dsx --smdh=out/gtavc.smdh
+          "$tools/makerom" -f cia -o "out/GTAVC For Nintendo 3DS.cia" -rsf packaging/production_cia/container.rsf -target t -elf miami/build/miami.elf -icon out/gtavc.smdh -banner out/revc.bnr -DAPP_TITLE='GTAVC Fo' -DAPP_PRODUCT_CODE='CTR-P-REVC' -DAPP_UNIQUE_ID=0x2F61
+          cp -r gamefiles/revc out/gamefiles-revc
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: regta-revc-3ds
+          path: |
+            out/GTAVC For Nintendo 3DS.cia
+            out/revc.3dsx
+            out/gamefiles-revc
